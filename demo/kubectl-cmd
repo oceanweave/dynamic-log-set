@@ -1,0 +1,7 @@
+# 单文件
+kubectl -n default create configmap log-demo-set --from-file=log
+# 多文件
+kubectl -n default create configmap log-demo-set --from-file=other-conf --from-file=log
+
+# 删除
+kubectl -n default delete configmap log-demo-set
