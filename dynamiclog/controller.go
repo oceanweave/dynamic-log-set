@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	clientv1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	v1 "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
@@ -17,6 +16,7 @@ var LogLevelMap = map[string]int{
 	"INFO":  2,
 	"WARN":  3,
 	"ERROR": 4,
+	"FATAL": 5,
 }
 
 const (
@@ -26,6 +26,7 @@ const (
 	LogInfoLevel     = 2
 	LogWarnLevel     = 3
 	LogErrorLevel    = 4
+	LogFatalLevel    = 5
 	DefaultInfoLevel = "Info"
 )
 
@@ -33,6 +34,7 @@ type LogInterface interface {
 	EnableLogPrint(string, int) int
 	KlogEnableLogPrint(string, int) klog.Level
 	GetLogPartLevelMap() map[string]string
+	GetLogPartNameList() []string
 }
 
 type LogController struct {
@@ -57,7 +59,7 @@ type ConfigMapInfo struct {
 
 // nowLevel 为用户此处设置日志级别
 // dynamicLevel 是 configmap 中 partName 对应的字段
-// 此处根据 dynamicLevel 和 nowLevel 判断是否打印， nowLevel 高于或等于 dynamicLevel 时，此处日志才会打印
+// 此处根据 dynamicLevel 和 nowLevel 判断是否打印， nowLevel >=  dynamicLevel 时，此处日志才会打印
 // 如 nowLevel = warn， dynamic = debug， 此处日志会打印
 func (c *LogController) EnableLogPrint(partName string, nowLevel int) int {
 	var dynamicLevel string
@@ -80,11 +82,11 @@ func (c *LogController) KlogEnableLogPrint(partName string, nowLevel int) klog.L
 
 	// 使用 configmap 中为设置的 partName， 就设置为 Info 日志级别
 	if dynamicLevel, ok = c.cmInfo.partLevelMap[partName]; !ok {
-		fmt.Println(dynamicLevel)
+		fmt.Printf("Dynamic-log-set: Not found “%s” log level set！Set the default “info” log level.\n", partName)
+		c.cmInfo.partLevelMap[partName] = c.cmInfo.defalultLevel
 		dynamicLevel = c.cmInfo.defalultLevel
 	}
 
-	fmt.Println(dynamicLevel)
 	if nowLevel >= LogLevelMap[strings.ToUpper(dynamicLevel)] {
 		return LogEnable
 	}
@@ -95,7 +97,7 @@ func (c *LogController) GetLogPartLevelMap() map[string]string {
 	return c.cmInfo.partLevelMap
 }
 
-func (c *LogController) GetLogPartList() []string {
+func (c *LogController) GetLogPartNameList() []string {
 	return c.cmInfo.partList
 }
 
@@ -151,46 +153,31 @@ func (c *LogController) runWithInformer() {
 func (c *LogController) runInit(stopCh <-chan struct{}) {
 	// 获取已存在的 ConfigMap 资源列表
 	go c.cmInfomer.Run(stopCh)
-	fmt.Println("开始初始化")
+	fmt.Println("Dynamic-log-set: Initing(load exist configmap) ...")
 	if !cache.WaitForCacheSync(stopCh, c.cmInfomer.HasSynced) {
-		fmt.Println("Timed out waiting for caches to sync")
+		fmt.Println("Dynamic-log-set: Timed out waiting for caches to sync")
 		return
 	}
 	// 检查 HasSynced 的值
 	if !c.cmInfomer.HasSynced() {
-		fmt.Println("Informer has not synced yet")
+		fmt.Println("Dynamic-log-set: Informer has not synced yet")
 		return
 	}
-	existingConfigs, _ := c.cmLister.List(labels.Everything())
-	//fmt.Println("Existing ConfigMaps:", existingConfigs)
-	//fmt.Println("Existing ConfigMaps:")
-	fmt.Println("cminfo:", c.cmInfo.name, c.cmInfo.namespace)
-	for _, cm := range existingConfigs {
-		//fmt.Println("allcm:", cm.Name, cm.Namespace)
-		if cm.Namespace == c.cmInfo.namespace && cm.Name == c.cmInfo.name {
-			fmt.Println(cm)
-			c.parse(cm)
-		}
-		//if !ok {
-		//	fmt.Println("Error casting object to ConfigMap")
-		//	continue
-		//}
-		//fmt.Printf("ConfigMap: %s in namespace %s\n", cm.Name, cm.Namespace)
-		//if
-		//c.parse(cm)
+	existingConfig, err := c.cmLister.ConfigMaps(c.cmInfo.namespace).Get(c.cmInfo.name)
+	if err != nil {
+		fmt.Printf("Dynamic-log-set: Not found %s/%s confingmap in this cluster\n", c.cmInfo.namespace, c.cmInfo.name)
+		return
 	}
+	c.parse(existingConfig)
 }
 
 func (c *LogController) parse(cm *corev1.ConfigMap) {
 	c.cmInfo.rev = cm.ResourceVersion
 	c.cmInfo.cm = cm
 	c.cmInfo.parseConfigLogData()
-	//fmt.Println("parse:", c.cminfo.cm)
 }
 
 func (cmi *ConfigMapInfo) parseConfigLogData() {
-	cmi.partLevelMap = make(map[string]string)
-
 	// 获取该 configmap 中指定 key 的内容
 	lines := strings.Split(cmi.cm.Data[cmi.logKey], "\n")
 	for _, line := range lines {

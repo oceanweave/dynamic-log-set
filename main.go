@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"github.com/oceanweave/dynamic-log-set/dynamiclog"
-	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	"os"
 	"path/filepath"
@@ -35,64 +34,54 @@ func main() {
 	// 创建 SharedInformerFactory
 	sharedInformerFactory := informers.NewSharedInformerFactory(clientset, time.Second*30)
 
-	logprint := dynamiclog.NewWithSharedInformerFactory(context.TODO(), sharedInformerFactory, "my-config2", "default", "log", "info")
+	// 动态日志的 Configmap 配置信息
+	cmNamespace := "default"
+	cmName := "log-demo-set"
+	cmLogKey := "log"
+	logDefaultLevel := "info"
 
-	fmt.Println(logprint.GetLogPartLevelMap())
+	// 此处返回的是指针
+	logprint := dynamiclog.NewWithSharedInformerFactory(context.TODO(), sharedInformerFactory, cmNamespace, cmName, cmLogKey, logDefaultLevel)
 
-	// 获取 ConfigMap 的 Informer
-	cmInformer := sharedInformerFactory.Core().V1().ConfigMaps().Informer()
-
-	// 启动 Informer
-	stopCh := make(chan struct{})
-	defer close(stopCh)
-	// 等待缓存同步完成
-	//go sharedInformerFactory.Start(stopCh)
-	//go cmInformer.Run(stopCh)
-
-	if !cache.WaitForCacheSync(stopCh, cmInformer.HasSynced) {
-		fmt.Println("Timed out waiting for caches to sync")
-		return
-	}
-	//检查 HasSynced 的值
-	if !cmInformer.HasSynced() {
-		fmt.Println("Informer has not synced yet")
-		return
-	}
-	fmt.Println("上面同步完成")
-	////cmlister2 := cmInformer.Lister()
-	//cmlister := sharedInformerFactory.Core().V1().ConfigMaps().Lister()
-	//cmlist, _ := cmlister.ConfigMaps("default").Get("my-config2")
-	//fmt.Println("cmlist:", cmlist)
-	//
-	////configMap, err := clientset.CoreV1().ConfigMaps("default").Get(context.TODO(), "my-config2", metav1.GetOptions{})
-	////fmt.Println(configMap.Data)
-	//
-	//cmStore := cmInformer.GetStore()
-	//// 手动检索和遍历 ConfigMap 资源
-	//cmKey, _ := cache.MetaNamespaceKeyFunc(&corev1.ConfigMap{
-	//	ObjectMeta: metav1.ObjectMeta{
-	//		Name:      "my-config",
-	//		Namespace: "default",
-	//	},
-	//})
-	//cmObj, _, err := cmStore.GetByKey(cmKey)
-	//if err != nil {
-	//	fmt.Printf("Error getting ConfigMap from Store: %v\n", err)
-	//	return
-	//}
-	//fmt.Println(cmObj.(*corev1.ConfigMap).Data)
-
-	// 初始化 klog，将日志输出到标准错误流
-	klog.InitFlags(nil)
-	flag.Set("logtostderr", "true")
+	fmt.Printf("Namespace: %s, ConfigMap: %s  --> Exist Confimap's Part-Key: %s\n", cmNamespace, cmName, logprint.GetLogPartNameList())
+	fmt.Println("Now log level setting:", logprint.GetLogPartLevelMap())
 
 	// 解析命令行参数
 	flag.Parse()
 
-	klog.V(logprint.KlogEnableLogPrint("dynamicLogLevel", dynamiclog.LogDebugLevel)).Info("---> DEBUG动态打印日志成功")
-	klog.V(logprint.KlogEnableLogPrint("dynamicLogLevel", dynamiclog.LogInfoLevel)).Info("---> INFO动态打印日志成功")
-	klog.V(logprint.KlogEnableLogPrint("dynamicLogLevel", dynamiclog.LogWarnLevel)).Info("---> WARN动态打印日志成功")
-	klog.V(logprint.KlogEnableLogPrint("dynamicLogLevel", dynamiclog.LogErrorLevel)).Info("---> ERROR动态打印日志成功")
-	// 等待程序终止
-	select {}
+	// 创建一个定时器，每5秒触发一次
+	ticker := time.Tick(10 * time.Second)
+
+	// 无限循环，定期执行 demo 函数
+	for {
+		select {
+		case <-ticker:
+			// 每次定时器触发时执行 demo 函数
+			demo(logprint)
+		}
+	}
+
+	// 阻塞，防止程序终止
+	// select {}
+}
+
+func demo(logprint dynamiclog.LogInterface) {
+	fmt.Println("====================================")
+	klog.V(logprint.KlogEnableLogPrint("part1", dynamiclog.LogDebugLevel)).Info("---> Part-1-DEBUG动态打印日志成功")
+	klog.V(logprint.KlogEnableLogPrint("part1", dynamiclog.LogInfoLevel)).Info("---> Part-1-INFO动态打印日志成功")
+	klog.V(logprint.KlogEnableLogPrint("part1", dynamiclog.LogWarnLevel)).Info("---> Part-1-WARN动态打印日志成功")
+	klog.V(logprint.KlogEnableLogPrint("part1", dynamiclog.LogErrorLevel)).Info("---> Part-1-ERROR动态打印日志成功")
+	klog.V(logprint.KlogEnableLogPrint("part1", dynamiclog.LogFatalLevel)).Info("---> Part-1-FATAL动态打印日志成功")
+
+	klog.V(logprint.KlogEnableLogPrint("part2", dynamiclog.LogDebugLevel)).Info("---> Part-2-DEBUG动态打印日志成功")
+	klog.V(logprint.KlogEnableLogPrint("part2", dynamiclog.LogInfoLevel)).Info("---> Part-2-INFO动态打印日志成功")
+	klog.V(logprint.KlogEnableLogPrint("part2", dynamiclog.LogWarnLevel)).Info("---> Part-2-WARN动态打印日志成功")
+	klog.V(logprint.KlogEnableLogPrint("part2", dynamiclog.LogErrorLevel)).Info("---> Part-2-ERROR动态打印日志成功")
+	klog.V(logprint.KlogEnableLogPrint("part2", dynamiclog.LogFatalLevel)).Info("---> Part-2-FATAL动态打印日志成功")
+
+	klog.V(logprint.KlogEnableLogPrint("part3", dynamiclog.LogDebugLevel)).Info("---> Part-3-DEBUG动态打印日志成功")
+	klog.V(logprint.KlogEnableLogPrint("part3", dynamiclog.LogInfoLevel)).Info("---> Part-3-INFO动态打印日志成功")
+	klog.V(logprint.KlogEnableLogPrint("part3", dynamiclog.LogWarnLevel)).Info("---> Part-3-WARN动态打印日志成功")
+	klog.V(logprint.KlogEnableLogPrint("part3", dynamiclog.LogErrorLevel)).Info("---> Part-3-ERROR动态打印日志成功")
+	klog.V(logprint.KlogEnableLogPrint("part3", dynamiclog.LogFatalLevel)).Info("---> Part-3-FATAL动态打印日志成功")
 }

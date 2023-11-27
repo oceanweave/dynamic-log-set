@@ -29,13 +29,18 @@ func NewWithConfigPath(ctx context.Context, configPath string, name, namespace, 
 
 	// 创建 SharedInformerFactory
 	sharedInformerFactory := informers.NewSharedInformerFactory(clientset, time.Second*30)
-	c := NewWithSharedInformerFactory(ctx, sharedInformerFactory, name, namespace, logKey, defaultLevel)
+	c := NewWithSharedInformerFactory(ctx, sharedInformerFactory, namespace, name, logKey, defaultLevel)
 	return c
 }
 
 // NewWithSharedInformerFactory create konfig with shared informer factory.
 // 返回值为接口形式，那么用户使用返回的结构体，只能调用该接口规定的方法
-func NewWithSharedInformerFactory(ctx context.Context, factory informers.SharedInformerFactory, cmName, cmNamespace, cmLogKey, logDefaultLevel string) LogInterface {
+// args:
+// cmNamespace --> log-configmap 所在的 namespace，
+// cmName --> log-configmap 的名称，
+// cmLogKey --> log-configmap 中 log 配置字段的 key 值（可以理解是文件名，就是下面命令中的 log； kubectl -n default create configmap log-demo-set --from-file=log），
+// logDefaultLevel --> 若没有配置字段，或误删除，会配置此 log 级别
+func NewWithSharedInformerFactory(ctx context.Context, factory informers.SharedInformerFactory, cmNamespace, cmName, cmLogKey, logDefaultLevel string) LogInterface {
 	c := &LogController{
 		ctx:       ctx,
 		cmLister:  factory.Core().V1().ConfigMaps().Lister(),
@@ -47,6 +52,7 @@ func NewWithSharedInformerFactory(ctx context.Context, factory informers.SharedI
 			logKey:        cmLogKey,
 			cm:            &corev1.ConfigMap{},
 			defalultLevel: logDefaultLevel,
+			partLevelMap:  make(map[string]string),
 		},
 	}
 
